@@ -1,6 +1,31 @@
 -- Server Functions for MK Vehicle Keys
 -- Helper functions and utilities
 
+-- Determine which vehicle table to use based on framework
+local vehicleTable = nil
+
+CreateThread(function()
+    -- Check which table exists
+    local result = MySQL.query.await('SHOW TABLES LIKE "owned_vehicles"')
+    if result and #result > 0 then
+        vehicleTable = 'owned_vehicles' -- ESX
+        print('^2[MK Vehicle Keys]^7 Using ESX table: owned_vehicles')
+    else
+        vehicleTable = 'player_vehicles' -- QBCore
+        print('^2[MK Vehicle Keys]^7 Using QBCore table: player_vehicles')
+    end
+end)
+
+-- Wait for table detection
+function GetVehicleTable()
+    local timeout = 0
+    while not vehicleTable and timeout < 50 do
+        Wait(100)
+        timeout = timeout + 1
+    end
+    return vehicleTable or 'owned_vehicles' -- Default to ESX
+end
+
 -- Generate a unique keyfob ID
 function GenerateFobId()
     local fobId = ''
@@ -16,7 +41,8 @@ end
 
 -- Check if vehicle is owned by any player
 function IsVehicleOwned(plate)
-    local result = MySQL.query.await('SELECT owner FROM player_vehicles WHERE plate = ?', {plate})
+    local table = GetVehicleTable()
+    local result = MySQL.query.await('SELECT owner FROM '..table..' WHERE plate = ?', {plate})
 
     if result and result[1] then
         return true, result[1].owner
@@ -27,9 +53,10 @@ end
 
 -- Get all keyfobs for a player
 function GetPlayerKeyfobs(identifier)
+    local table = GetVehicleTable()
     local result = MySQL.query.await([[
         SELECT vehicle, plate, fob_id
-        FROM player_vehicles
+        FROM ]]..table..[[
         WHERE owner = ? AND fob_id IS NOT NULL
     ]], {identifier})
 
@@ -51,7 +78,8 @@ function CreateDuplicateKeyfob(source, plate)
     end
 
     -- Get vehicle data
-    local result = MySQL.query.await('SELECT fob_id, vehicle FROM player_vehicles WHERE plate = ?', {plate})
+    local table = GetVehicleTable()
+    local result = MySQL.query.await('SELECT fob_id, vehicle FROM '..table..' WHERE plate = ?', {plate})
 
     if result and result[1] and result[1].fob_id then
         local fobId = result[1].fob_id
@@ -101,7 +129,8 @@ function ReprogramKeyfob(source, plate)
     end
 
     -- Get current fob data
-    local result = MySQL.query.await('SELECT fob_id FROM player_vehicles WHERE plate = ?', {plate})
+    local table = GetVehicleTable()
+    local result = MySQL.query.await('SELECT fob_id FROM '..table..' WHERE plate = ?', {plate})
 
     if result and result[1] then
         local oldFobId = result[1].fob_id
@@ -118,7 +147,7 @@ function ReprogramKeyfob(source, plate)
         local newFobId = GenerateFobId()
 
         -- Get old fobs list
-        local oldFobsResult = MySQL.query.await('SELECT old_fobs FROM player_vehicles WHERE plate = ?', {plate})
+        local oldFobsResult = MySQL.query.await('SELECT old_fobs FROM '..table..' WHERE plate = ?', {plate})
         local oldFobs = {}
 
         if oldFobsResult and oldFobsResult[1] and oldFobsResult[1].old_fobs then
@@ -131,7 +160,7 @@ function ReprogramKeyfob(source, plate)
         end
 
         -- Update database
-        MySQL.update.await('UPDATE player_vehicles SET fob_id = ?, old_fobs = ? WHERE plate = ?', {
+        MySQL.update.await('UPDATE '..table..' SET fob_id = ?, old_fobs = ? WHERE plate = ?', {
             newFobId,
             json.encode(oldFobs),
             plate
@@ -149,7 +178,7 @@ function ReprogramKeyfob(source, plate)
         end
 
         -- Give player new keyfob
-        local vehicleData = MySQL.query.await('SELECT vehicle FROM player_vehicles WHERE plate = ?', {plate})
+        local vehicleData = MySQL.query.await('SELECT vehicle FROM '..table..' WHERE plate = ?', {plate})
         local vehicleName = vehicleData and vehicleData[1] and vehicleData[1].vehicle or 'Unknown'
 
         local metadata = {

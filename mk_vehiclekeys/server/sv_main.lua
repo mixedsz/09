@@ -173,7 +173,8 @@ lib.callback.register('MK_VehicleKeys:Server:CheckOwnership', function(source, p
     end
 
     -- Query database for vehicle ownership
-    local result = MySQL.query.await('SELECT owner FROM player_vehicles WHERE plate = ?', {plate})
+    local table = GetVehicleTable()
+    local result = MySQL.query.await('SELECT owner FROM '..table..' WHERE plate = ?', {plate})
 
     if result and result[1] then
         local owner = result[1].owner
@@ -200,7 +201,8 @@ lib.callback.register('MK_VehicleKeys:Server:SetFobDataByPlate', function(source
     end
 
     -- Query database for keyfob data
-    local result = MySQL.query.await('SELECT * FROM player_vehicles WHERE plate = ?', {plate})
+    local table = GetVehicleTable()
+    local result = MySQL.query.await('SELECT * FROM '..table..' WHERE plate = ?', {plate})
 
     if result and result[1] then
         local vehicleData = result[1]
@@ -217,9 +219,9 @@ lib.callback.register('MK_VehicleKeys:Server:SetFobDataByPlate', function(source
             return vehicleData.fob_id
         else
             -- Generate new fob ID
-            local newFobId = utils:generateFobId()
+            local newFobId = GenerateFobId()
 
-            MySQL.update.await('UPDATE player_vehicles SET fob_id = ? WHERE plate = ?', {
+            MySQL.update.await('UPDATE '..table..' SET fob_id = ? WHERE plate = ?', {
                 newFobId,
                 plate
             })
